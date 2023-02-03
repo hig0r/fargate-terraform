@@ -1,0 +1,6 @@
+.idea/
+infra/
+.git/
+.gitignore
+.dockerignore
+buildspec.yml
