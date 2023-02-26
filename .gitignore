@@ -1,2 +1,4 @@
 .idea/
-infra/
+*.tfstate
+*.tfstate.backup
+.terraform
