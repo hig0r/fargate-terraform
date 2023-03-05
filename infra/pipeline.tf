@@ -13,17 +13,15 @@ resource "aws_codepipeline" "this" {
     action {
       name             = "Source"
       category         = "Source"
-      owner            = "ThirdParty"
-      provider         = "GitHub"
+      owner            = "AWS"
+      provider         = "CodeStarSourceConnection"
       version          = "1"
       output_artifacts = ["source_output"]
 
       configuration = {
-        Owner                = "hig0r"
-        Repo                 = "fargate-terraform"
-        Branch               = "master"
-        OAuthToken           = var.github_token
-        PollForSourceChanges = false
+        ConnectionArn        = aws_codestarconnections_connection.this.arn
+        FullRepositoryId     = "hig0r/fargate-terraform"
+        BranchName           = "master"
       }
     }
   }
@@ -64,6 +62,8 @@ resource "aws_codepipeline" "this" {
       }
     }
   }
+
+  depends_on = [aws_iam_role_policy.codepipeline]
 }
 
 resource "aws_codebuild_project" "this" {
@@ -95,10 +95,23 @@ resource "aws_codebuild_project" "this" {
   source {
     type = "CODEPIPELINE"
   }
+
+  depends_on = [aws_iam_role_policy.codebuild]
 }
 
 resource "aws_s3_bucket" "codepipeline" {
-  bucket = "codepipeline-bucket-nginx-test"
+  bucket        = "codepipeline-bucket-nginx-test"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_acl" "codepipeline" {
+  bucket = aws_s3_bucket.codepipeline.id
+  acl    = "private"
+}
+
+resource "aws_codestarconnections_connection" "this" {
+  name          = "mygithub"
+  provider_type = "GitHub"
 }
 
 resource "aws_iam_role" "codepipeline" {
@@ -128,7 +141,7 @@ resource "aws_iam_role_policy" "codepipeline" {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Effect":"Allow",
+      "Effect": "Allow",
       "Action": [
         "s3:GetObject",
         "s3:GetObjectVersion",
@@ -143,6 +156,11 @@ resource "aws_iam_role_policy" "codepipeline" {
     },
     {
       "Effect": "Allow",
+      "Action": ["codestar-connections:UseConnection"],
+      "Resource": ["${aws_codestarconnections_connection.this.arn}"]
+    },
+    {
+      "Effect": "Allow",
       "Action": [
         "codebuild:BatchGetBuilds",
         "codebuild:StartBuild"
@@ -150,6 +168,7 @@ resource "aws_iam_role_policy" "codepipeline" {
       "Resource": "*"
     },
     {
+      "Effect": "Allow",
       "Action": [
         "ecs:*",
         "events:DescribeRule",
@@ -166,12 +185,11 @@ resource "aws_iam_role_policy" "codepipeline" {
         "logs:DescribeLogGroups",
         "logs:FilterLogEvents"
       ],
-      "Resource": "*",
-      "Effect": "Allow"
+      "Resource": "*"
     },
     {
-      "Action": "iam:PassRole",
       "Effect": "Allow",
+      "Action": "iam:PassRole",
       "Resource": [
         "*"
       ],
@@ -182,8 +200,8 @@ resource "aws_iam_role_policy" "codepipeline" {
       }
     },
     {
-      "Action": "iam:PassRole",
       "Effect": "Allow",
+      "Action": "iam:PassRole",
       "Resource": [
         "arn:aws:iam::*:role/ecsInstanceRole*"
       ],
@@ -199,6 +217,7 @@ EOF
 }
 
 resource "aws_iam_role" "codebuild" {
+  name               = "codebuild-role"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
